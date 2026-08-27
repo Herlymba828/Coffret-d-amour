@@ -1,0 +1,24 @@
+{
+  "name": "coffret-amour",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=@coffret/api",
+    "dev:web": "npm run dev --workspace=@coffret/web",
+    "build": "npm run build --workspace=@coffret/shared && npm run build --workspace=@coffret/api && npm run build --workspace=@coffret/web",
+    "db:migrate": "npm run db:migrate --workspace=@coffret/api",
+    "db:seed": "npm run db:seed --workspace=@coffret/api",
+    "db:reset": "npm run db:reset --workspace=@coffret/api",
+    "test": "npm run test --workspace=@coffret/api",
+    "typecheck": "npm run build --workspace=@coffret/shared && npm run typecheck --workspace=@coffret/api && tsc -b apps/web/tsconfig.json",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

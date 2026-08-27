@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      # @coffret/shared est consommé par l'API et le web : il doit être compilé
+      # avant eux, sinon les types sont introuvables.
+      - name: Compiler les types partagés
+        run: npm run build --workspace=@coffret/shared
+
+      - name: Tests API
+        run: npm run test --workspace=@coffret/api
+        env:
+          # Les tests bouchonnent la base : ces valeurs servent uniquement à
+          # satisfaire la validation de config au démarrage.
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          JWT_SECRET: secret-de-ci-suffisamment-long-pour-passer-le-garde-fou
+
+      - name: Build complet
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          JWT_SECRET: secret-de-ci-suffisamment-long-pour-passer-le-garde-fou
+
+  schema:
+    # Vérifie que docs/schema.sql s'applique sur une base vierge ET qu'il est
+    # rejouable — la régression qui rendait `db:migrate` jouable une seule fois.
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: coffret_amour
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dev -d coffret_amour"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://dev:dev@localhost:5432/coffret_amour
+      JWT_SECRET: secret-de-ci-suffisamment-long-pour-passer-le-garde-fou
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compiler les types partagés
+        run: npm run build --workspace=@coffret/shared
+
+      - name: Appliquer le schéma
+        run: npm run db:migrate
+
+      - name: Rejouer le schéma (idempotence)
+        run: npm run db:migrate
+
+      - name: Peupler la base
+        run: npm run db:seed
+
+      - name: Rejouer le seed (idempotence)
+        run: npm run db:seed
+
+      - name: Vérifier les données attendues
+        run: |
+          psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM users" | grep -qx 2
+          psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM albums" | grep -qx 3
+          psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM memories" | grep -qx 3
+          psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM love_phrases" | grep -qx 5
+          psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM poem_templates" | grep -qx 3

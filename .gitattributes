@@ -1,0 +1,14 @@
+# Normalisation des fins de ligne : le dépôt stocke du LF, Windows garde du CRLF
+# en copie de travail. Évite des diffs entiers au premier commit d'une autre machine.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp3 binary
+*.mp4 binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
