@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { asyncRouter } from '../utils/asyncRouter.js';
 import { buildUpdate } from '../utils/sqlUpdate.js';
 import { buildStorageKey, getReadUrl, getUploadUrl, objectExists, deleteObject } from '../services/storage.js';
+import { generateDerivatives, type MediaDerivatives } from '../services/thumbnails.js';
 
 const router = asyncRouter();
 
@@ -46,9 +47,23 @@ router.post('/:id/confirm', authMiddleware, async (req, res) => {
     return res.status(409).json({ error: { code: 'UPLOAD_MISSING', message: "Le fichier n'a pas été envoyé" } });
   }
 
+  // Une miniature ratée ne doit pas faire échouer l'ajout d'une photo :
+  // la galerie retombe sur l'original.
+  let derivatives: MediaDerivatives = { thumbnailKey: null, width: null, height: null };
+  try {
+    derivatives = await generateDerivatives(m.storage_key, m.mime_type);
+  } catch (err) {
+    console.warn(`Miniature non générée pour ${m.id}:`, (err as Error).message);
+  }
+
   const confirmed = await query(
-    'UPDATE media SET uploaded_at = COALESCE(uploaded_at, NOW()) WHERE id = $1 RETURNING *',
-    [m.id],
+    `UPDATE media SET
+      uploaded_at = COALESCE(uploaded_at, NOW()),
+      thumbnail_key = COALESCE($2, thumbnail_key),
+      width = COALESCE($3, width),
+      height = COALESCE($4, height)
+     WHERE id = $1 RETURNING *`,
+    [m.id, derivatives.thumbnailKey, derivatives.width, derivatives.height],
   );
   const row = confirmed.rows[0];
 
@@ -57,7 +72,10 @@ router.post('/:id/confirm', authMiddleware, async (req, res) => {
     albumId: row.album_id,
     mimeType: row.mime_type,
     filename: row.filename,
+    width: row.width,
+    height: row.height,
     readUrl: await getReadUrl(row.storage_key),
+    thumbnailUrl: row.thumbnail_key ? await getReadUrl(row.thumbnail_key) : null,
     createdAt: row.created_at,
   });
 });
@@ -75,7 +93,10 @@ router.get('/:id', authMiddleware, async (req, res) => {
     filename: m.filename,
     caption: m.caption,
     isPinned: m.is_pinned,
+    width: m.width,
+    height: m.height,
     readUrl: m.storage_key ? await getReadUrl(m.storage_key) : null,
+    thumbnailUrl: m.thumbnail_key ? await getReadUrl(m.thumbnail_key) : null,
     createdAt: m.created_at,
   });
 });
@@ -115,18 +136,23 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 });
 
 router.delete('/:id', authMiddleware, async (req, res) => {
-  const result = await query<{ id: string; storage_key: string }>(
-    'DELETE FROM media WHERE id = $1 RETURNING id, storage_key',
+  const result = await query<{ id: string; storage_key: string; thumbnail_key: string | null }>(
+    'DELETE FROM media WHERE id = $1 RETURNING id, storage_key, thumbnail_key',
     [req.params.id],
   );
   if (result.rows.length === 0) {
     return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Média introuvable' } });
   }
 
-  // Le fichier ne doit pas survivre à sa ligne : on ignore l'échec S3 (déjà supprimé).
-  await deleteObject(result.rows[0].storage_key).catch((err) => {
-    console.warn('Suppression S3 échouée:', (err as Error).message);
-  });
+  // Les fichiers ne doivent pas survivre à leur ligne : on ignore l'échec S3
+  // (objet déjà supprimé, ou miniature jamais générée).
+  const { storage_key, thumbnail_key } = result.rows[0];
+  for (const key of [storage_key, thumbnail_key]) {
+    if (!key) continue;
+    await deleteObject(key).catch((err) => {
+      console.warn(`Suppression S3 échouée (${key}):`, (err as Error).message);
+    });
+  }
 
   res.status(204).send();
 });

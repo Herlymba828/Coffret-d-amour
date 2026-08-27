@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { config } from './config.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
@@ -16,6 +17,9 @@ export function createApp(): Express {
   const app = express();
 
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
+  // Les listes d'albums et l'historique de chat sont du JSON très répétitif :
+  // gzip divise la charge utile par 5 environ.
+  app.use(compression());
   app.use(express.json({ limit: '256kb' }));
 
   app.use('/health', healthRoutes);

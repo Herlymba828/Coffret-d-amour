@@ -2,7 +2,22 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@coffret/shared';
 import { api } from '../lib/api';
-import { connectSocket, disconnectSocket } from '../lib/socket';
+
+/**
+ * socket.io-client est chargé à la demande : il n'a pas à être analysé au
+ * premier rendu, alors que l'écran de connexion n'en a aucun usage. Les
+ * abonnements vivent dans un registre indépendant du socket, donc un
+ * raccordement tardif ne fait perdre aucun événement.
+ */
+const socketLib = () => import('../lib/socket');
+
+function connectSocket(token: string) {
+  void socketLib().then((lib) => lib.connectSocket(token));
+}
+
+function disconnectSocket() {
+  void socketLib().then((lib) => lib.disconnectSocket());
+}
 
 interface AuthState {
   user: User | null;

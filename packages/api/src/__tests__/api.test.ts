@@ -156,3 +156,36 @@ describe('validation des entrées', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('compression des réponses', () => {
+  it('compresse un historique de chat volumineux', async () => {
+    const token = signAccessToken({ userId: USER.id, role: USER.role });
+    const rows = Array.from({ length: 100 }, (_, i) => ({
+      id: `msg-${i}`,
+      sender_id: USER.id,
+      receiver_id: 'autre',
+      content: 'Chaque message de toi fait battre mon cœur un peu plus fort',
+      type: 'text',
+      media_url: null,
+      is_ephemeral: false,
+      is_read: true,
+      read_at: null,
+      created_at: '2026-08-27T10:00:00.000Z',
+    }));
+    mockQuery.mockResolvedValueOnce({ rows });
+
+    const res = await request(app)
+      .get('/v1/chat/messages')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Accept-Encoding', 'gzip');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-encoding']).toBe('gzip');
+    expect(res.body).toHaveLength(100);
+  });
+
+  it('laisse passer une petite réponse sans la compresser', async () => {
+    const res = await request(app).get('/v1/inexistant').set('Accept-Encoding', 'gzip');
+    expect(res.headers['content-encoding']).toBeUndefined();
+  });
+});

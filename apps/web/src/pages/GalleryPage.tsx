@@ -162,13 +162,25 @@ function AlbumCard({
       {expanded && (
         <div className="border-t border-copper-gold/20 p-4">
           <div className="mb-3 grid grid-cols-3 gap-2">
-            {media.map((m) => (
-              m.readUrl ? (
-                <img key={m.id} src={m.readUrl} alt={m.caption ?? ''} className="aspect-square rounded-lg object-cover" />
+            {media.map((m) => {
+              // La vignette fait ~40 Ko contre 3 à 5 Mo pour l'original ;
+              // on ne retombe sur l'original que si elle manque.
+              const src = m.thumbnailUrl ?? m.readUrl;
+              return src ? (
+                <img
+                  key={m.id}
+                  src={src}
+                  alt={m.caption ?? ''}
+                  width={m.width ?? undefined}
+                  height={m.height ?? undefined}
+                  loading="lazy"
+                  decoding="async"
+                  className="aspect-square w-full rounded-lg object-cover"
+                />
               ) : (
                 <div key={m.id} className="aspect-square rounded-lg bg-powder-rose/40" />
-              )
-            ))}
+              );
+            })}
           </div>
           <button onClick={onUpload} className="btn-secondary w-full py-2 text-sm">
             <Plus size={16} className="mr-1 inline" /> Ajouter une photo
