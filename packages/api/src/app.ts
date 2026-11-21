@@ -8,6 +8,7 @@ import albumRoutes from './routes/albums.js';
 import mediaRoutes from './routes/media.js';
 import chatRoutes from './routes/chat.js';
 import healthRoutes from './routes/health.js';
+import toolsRoutes from './routes/tools.js';
 
 /**
  * Construction de l'app séparée de son écoute réseau : les tests montent
@@ -27,6 +28,8 @@ export function createApp(): Express {
   app.use('/v1/albums', albumRoutes);
   app.use('/v1/media', mediaRoutes);
   app.use('/v1/chat', chatRoutes);
+  app.use('/v1/tools', toolsRoutes);
+
 
   app.use(notFoundHandler);
   app.use(errorHandler);
